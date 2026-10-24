@@ -4,22 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mon espace de classe</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;800&family=Nunito:wght@400;700&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
+<header class="top">
+<p class="eyebrow">Mathématiques · année 2026-2027</p>
 <h1>Mon espace de classe</h1>
-<div class="tabs" id="nav"><button id="b-sem" onclick="showV('sem')">Ma semaine</button><button id="b-notes" onclick="showV('notes')">Notes et classement</button></div>
-<section id="v-sem">
-<p class="sub">Progression annuelle · maths</p>
-<div class="chips" id="lv"></div>
+</header>
+<nav class="seg main-nav" id="nav" aria-label="Sections"><button id="b-sem" onclick="showV('sem')">Ma semaine</button><button id="b-notes" onclick="showV('notes')">Notes et classement</button></nav>
+
+<section id="v-sem" class="view">
+<div class="lvrow"><span class="label">Niveau</span><div class="seg" id="lv"></div></div>
 <section class="hero" id="hero" aria-live="polite"></section>
-<details class="card" id="suivi"><summary><b>Respect de la progression</b></summary><p class="m" style="margin:8px 0 6px">La progression est obligatoire : indique la dernière leçon terminée (régulation comprise) pour voir ton avance ou ton retard.</p><select id="sv" style="width:100%"></select><p id="sv-out" style="margin:8px 0 0"></p></details>
+<details class="card fold" id="suivi"><summary>Respect de la progression</summary>
+<div class="fold-b"><p class="m">La progression est obligatoire. Indique la dernière leçon terminée, régulation comprise, pour voir ton avance ou ton retard.</p>
+<label class="label" for="sv">Dernière leçon terminée</label><select id="sv" class="full"></select><p id="sv-out" class="sv-out"></p></div></details>
 <div class="pick"><label for="d">Voir une autre date</label><input type="date" id="d"></div>
-<ol id="list"></ol>
+<h2>Les 32 semaines</h2>
+<ol id="list" class="weeks"></ol>
 </section>
-<section id="v-notes" hidden><div id="app"></div></section>
+
+<section id="v-notes" class="view" hidden><div id="app"></div></section>
 </main>
 <script src="script.js"></script>
 </body>
