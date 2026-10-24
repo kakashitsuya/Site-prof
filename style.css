@@ -1,0 +1,54 @@
+:root{--bg:#f7f9fc;--grid:#d6e2f2;--ink:#1c2a4a;--mute:#6b7894;--accent:#c8372d;--card:#fff;--line:#c9d6ea;--ok:#2f7d5b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151b2b;--grid:#232c44;--ink:#e6ecfa;--mute:#93a0bd;--accent:#ff7a6e;--card:#1c2438;--line:#2e3956;--ok:#6fcf9f}}
+:root[data-theme="dark"]{--bg:#151b2b;--grid:#232c44;--ink:#e6ecfa;--mute:#93a0bd;--accent:#ff7a6e;--card:#1c2438;--line:#2e3956;--ok:#6fcf9f}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background-color:var(--bg);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;color:var(--ink);font-family:Nunito,system-ui,sans-serif;line-height:1.4}
+h2{font:600 18px Fraunces,Georgia,serif;margin:18px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px;margin-bottom:10px}
+input,select,textarea,button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 10px;max-width:100%}
+textarea{width:100%;min-height:90px}
+button{cursor:pointer;font-weight:700}
+button.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button.dng{color:var(--accent);border-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.row>input[type=text]{flex:1;min-width:140px}
+.tabs,.chips{display:flex;gap:6px;margin:10px 0}
+.tabs button,.chips button{flex:1;padding:8px 4px}
+.on{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important}
+.s{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;margin-bottom:10px}
+.s div{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 2px;font-size:12px;color:var(--mute)}
+.s b{display:block;font:800 18px Fraunces,Georgia,serif;color:var(--ink)}
+.st{display:grid;grid-template-columns:1fr 84px 44px 50px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line);font-size:15px}
+.st input[type=number]{width:84px;text-align:right}
+.st input.bad{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,var(--card))}
+.rk{font:800 16px Fraunces,Georgia,serif;color:var(--accent)}
+small,.m{color:var(--mute);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{padding:7px 4px;border-bottom:1px dashed var(--line);text-align:left}
+th{font-size:12px;color:var(--mute)}
+td.n{text-align:right;font-weight:700}
+.sc{overflow-x:auto}
+
+main{max-width:620px;margin:0 auto;padding:16px 14px 48px 24px;border-left:2px solid var(--accent);min-height:100vh}
+h1{font:800 26px Fraunces,Georgia,serif;margin:0 0 4px}
+[hidden]{display:none!important}
+.sub{font:600 15px Nunito,sans-serif;color:var(--mute);margin:0 0 8px}
+.hero{background:var(--card);border:1.5px solid var(--ink);border-radius:6px;padding:18px 18px 16px}
+.big{font:800 clamp(44px,14vw,68px)/1 Fraunces,Georgia,serif;margin:0}
+.dates{color:var(--mute);margin:6px 0 14px}
+.lesson{font:600 22px/1.2 Fraunces,Georgia,serif;margin:0 0 4px}
+.reg{color:var(--accent);font-weight:700;margin:0 0 12px}
+.bar{height:10px;background:var(--grid);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok)}
+.taux{font-size:14px;color:var(--mute);margin:6px 0 0}
+.pick{display:flex;gap:8px;align-items:center;margin:16px 0 10px;font-size:14px;color:var(--mute)}
+ol{list-style:none;margin:0;padding:0}
+li{display:grid;grid-template-columns:38px 1fr;gap:8px;padding:9px 10px;margin-bottom:4px;background:var(--card);border:1px solid var(--line);border-radius:6px;font-size:14px}
+li b{font-family:Fraunces,Georgia,serif;font-size:17px}
+li small{display:block;color:var(--mute)}
+li.off{background:transparent;border-style:dashed}li.off b{color:var(--mute)}
+li.past{opacity:.55}
+li.now{border:2px solid var(--accent);opacity:1}
+li.now b{color:var(--accent)}
