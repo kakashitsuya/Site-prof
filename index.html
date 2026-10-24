@@ -18,14 +18,12 @@
 <nav class="seg main-nav" id="nav" aria-label="Sections"><button id="b-sem" onclick="showV('sem')">Ma semaine</button><button id="b-notes" onclick="showV('notes')">Notes et classement</button></nav>
 
 <section id="v-sem" class="view">
-<div class="lvrow"><span class="label">Niveau</span><div class="seg" id="lv"></div></div>
+<div class="lvrow"><div class="seg" id="lv" aria-label="Niveau"></div><button id="today" class="ghost" hidden>Aujourd’hui</button></div>
 <section class="hero" id="hero" aria-live="polite"></section>
+<div class="card year"><div class="year-h"><b>L’année</b><p class="legend small"><span class="lg-done">faite</span><span class="lg-dn">devoir de niveau</span><span class="lg-off">congé</span></p></div><div id="year"></div></div>
 <details class="card fold" id="suivi"><summary>Respect de la progression</summary>
-<div class="fold-b"><p class="m">La progression est obligatoire. Indique la dernière leçon terminée, régulation comprise, pour voir ton avance ou ton retard.</p>
-<label class="label" for="sv">Dernière leçon terminée</label><select id="sv" class="full"></select><p id="sv-out" class="sv-out"></p></div></details>
-<div class="pick"><label for="d">Voir une autre date</label><input type="date" id="d"></div>
-<h2>Les 32 semaines</h2>
-<ol id="list" class="weeks"></ol>
+<div class="fold-b"><p class="m">Indique la dernière leçon terminée, régulation comprise, pour voir ton avance ou ton retard.</p>
+<select id="sv" class="full" aria-label="Dernière leçon terminée"></select><p id="sv-out" class="sv-out"></p></div></details>
 </section>
 
 <section id="v-notes" class="view" hidden><div id="app"></div></section>

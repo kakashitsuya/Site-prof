@@ -39,54 +39,47 @@ function pct(v){return String(Math.round(v*100)/100).replace(".",",")}
 function hh(x){return String(Math.round(x*100)/100).replace(".",",")}
 function today(){var n=new Date();return Date.UTC(n.getFullYear(),n.getMonth(),n.getDate())}
 function rng(m){return fmt(m)+" – "+fmt(m+4*DAY)}
+function wk(t){var dw=new Date(t).getUTCDay(),we=(dw===0||dw===6),m=t-((dw+6)%7)*DAY;if(we)m+=WK;var cur=-1;CAL.forEach(function(c,i){if(c.m===m)cur=i});return{m:m,cur:cur,we:we}}
+var t0=today(),curT=t0;
 function render(t){
-  var h=document.getElementById("hero"),dw=new Date(t).getUTCDay(),we=(dw===0||dw===6);
-  var m=t-((dw+6)%7)*DAY;if(we)m+=WK;
-  var cur=-1;CAL.forEach(function(c,i){if(c.m===m)cur=i});
-  var wn=we?'<span class="tag">Week-end : semaine suivante</span>':'';
-  if(m<START){h.innerHTML='<p class="eyebrow">Rentrée</p><p class="big word">Bientôt</p><p class="dates">La semaine 1 commence le lundi '+fmt(START)+' 2026.</p>';}
-  else if(cur<0){h.innerHTML='<p class="eyebrow">Année scolaire</p><p class="big word">Terminé</p><p class="dates">L’année scolaire s’est terminée le vendredi 11 juin 2027.</p>';}
+  var h=document.getElementById("hero"),x=wk(t),cur=x.cur,isNow=(cur>=0&&cur===wk(t0).cur);
+  var wn=(x.we&&t===t0)?'<span class="tag">Week-end : semaine suivante</span>':'';
+  var now=isNow?'<span class="tag now">Cette semaine</span>':'';
+  function top(lab,big,dates,tags){return'<div class="hero-top"><div class="stamp"><span>'+lab+'</span><b>'+big+'</b></div><div class="hero-meta"><p class="dates">'+dates+'</p>'+(tags?'<div class="tags">'+tags+'</div>':'')+'</div></div>'}
+  if(x.m<START){h.innerHTML=top('Rentrée','–','La semaine 1 commence le lundi '+fmt(START)+' 2026.','')}
+  else if(cur<0){h.innerHTML=top('Fin','✓','L’année scolaire s’est terminée le vendredi 11 juin 2027.','')}
   else{
     var c=CAL[cur];
     if(c.off){
       var nx=CAL[cur+1];
-      h.innerHTML='<div class="hero-h"><div><p class="eyebrow">Pas de cours</p><p class="big word">Congé</p></div>'+wn+'</div>'+
-      '<p class="dates">du lundi '+fmt(c.m)+' au vendredi '+fmt(c.m+4*DAY)+'</p><p class="lesson">'+c.name+'</p>'+
-      (nx?'<p class="note">Reprise le lundi '+fmt(nx.m)+' avec la semaine '+nx.n+'.</p>':'');
+      h.innerHTML=top('Congé','–',rng(c.m),now+wn)+'<p class="lesson">'+c.name+'</p>'+(nx?'<p class="note">Reprise le lundi '+fmt(nx.m)+' avec la semaine '+nx.n+'.</p>':'');
     }else{
-      var w=W[c.n-1],tg='';
+      var w=W[c.n-1],tg=now;
       if(w&&w[1])tg+='<span class="tag red">Régulation</span>';
       if(c.dn)tg+='<span class="tag red">Devoir de niveau</span>';
-      if(c.note)tg+='<span class="tag">'+c.note+'</span>';
       tg+=wn;
-      h.innerHTML='<div class="hero-h"><div><p class="eyebrow">Semaine</p><p class="big">'+c.n+'<small>/ 32</small></p></div></div>'+
-      '<p class="dates">du lundi '+fmt(c.m)+' au vendredi '+fmt(c.m+4*DAY)+'</p>'+
-      (w?'<p class="lesson">'+w[0]+'</p>'+(tg?'<div class="tags">'+tg+'</div>':'')+
+      h.innerHTML=top('Semaine',c.n,rng(c.m),tg)+
+      (w?'<p class="lesson">'+w[0]+'</p>'+
+        '<div class="prog"><div class="bar"><i style="width:'+w[2]+'%"></i></div><p class="prog-l"><span>'+w[3]+' h sur 128 h en fin de semaine</span><b>'+pct(w[2])+' %</b></p></div>'+
+        '<details class="more"><summary>Détail des heures</summary><div class="more-b">'+
+        (c.note?'<p class="note">'+c.note+'.</p>':'')+
         (w[1]?'<p class="note">Régulation : remédiation et évaluation des acquis, 1 h cumulée sur la leçon, peut se faire en TD.</p>':'')+
         (c.dn?'<p class="note">Fin de trimestre : devoir de niveau.</p>':'')+
-        '<div><p class="label">Les 4 h de la semaine</p><div class="split"><i></i><i></i></div><p class="legend"><span>3 h cours, exercices et TD</span><span>1 h IE, DS et comptes rendus</span></p></div>'+
+        '<div><div class="split"><i></i><i></i></div><p class="legend"><span>3 h cours, exercices et TD</span><span>1 h IE, DS et comptes rendus</span></p></div>'+
         '<div class="scroll"><table class="hrs"><tr><th>Leçon</th><th>Total</th><th>Cours, TD</th><th>IE, DS</th></tr>'+
-        w[4].map(function(l){return'<tr><td>'+l.n+'<small>'+hh(l.h)+' h'+(l.r?' + 1 h de régulation':'')+'</small></td><td>'+hh(l.t)+' h</td><td>'+hh(l.t*0.75)+' h</td><td>'+hh(l.t*0.25)+' h</td></tr>'}).join("")+'</table></div>'+
-        '<div class="prog"><div class="prog-l"><span>Exécution en fin de semaine</span><b>'+pct(w[2])+' %</b></div><div class="bar"><i style="width:'+w[2]+'%"></i></div><p class="m" style="margin:0">'+w[3]+' h sur 128 h</p></div>'
-      :'<p class="lesson">Hors progression</p>'+(tg?'<div class="tags">'+tg+'</div>':'')+'<p class="note">Les 32 semaines sont faites : marge ou évaluations avant la fin de l’année.</p>');
+        w[4].map(function(l){return'<tr><td>'+l.n+'<small>'+hh(l.h)+' h'+(l.r?' + 1 h de régulation':'')+'</small></td><td>'+hh(l.t)+' h</td><td>'+hh(l.t*0.75)+' h</td><td>'+hh(l.t*0.25)+' h</td></tr>'}).join("")+'</table></div></div></details>'
+      :'<p class="lesson">Hors progression</p><p class="note">Les 32 semaines sont faites : marge ou évaluations avant la fin de l’année.</p>');
     }
   }
-  var l="";
-  CAL.forEach(function(c,i){
-    var cl=i<cur?' past':i===cur?' now':'';
-    if(c.off){l+='<li class="wk off'+cl+'"><span class="n">–</span><div><p class="t">'+c.name+'</p><p class="d">'+rng(c.m)+'</p></div></li>';return}
-    var w=W[c.n-1],fl=[];
-    if(w&&w[1])fl.push('régulation');if(c.dn)fl.push('devoir de niveau');
-    l+='<li class="wk'+cl+'"><span class="n">'+c.n+'</span><div><p class="t">'+(w?w[0]:'Hors progression')+'</p><p class="d">'+rng(c.m)+(fl.length?' · <span class="flag">'+fl.join(', ')+'</span>':'')+(c.note?' · '+c.note:'')+'</p></div>'+
-      (w?'<span class="p">'+pct(w[2])+' %<span class="mini"><i style="width:'+w[2]+'%"></i></span></span>':'<span></span>')+'</li>';
-  });
-  document.getElementById("list").innerHTML=l;svOut(cur);
+  var g=[[]];CAL.forEach(function(c,i){g[g.length-1].push(i);if(c.dn&&i<CAL.length-1)g.push([])});
+  document.getElementById("year").innerHTML=g.map(function(ids,k){return'<div class="tri"><span class="tri-l">T'+(k+1)+'</span><div class="cells">'+ids.map(function(i){var c=CAL[i],cl='cell'+(c.m+5*DAY<=t0?' done':'')+(i===wk(t0).cur?' today':'')+(i===cur?' sel':'')+(c.dn?' dn':'');
+    if(c.off)return'<button class="'+cl+' off" data-i="'+i+'" aria-label="'+c.name+', '+rng(c.m)+'" title="'+c.name+'"></button>';
+    return'<button class="'+cl+'" data-i="'+i+'" aria-label="Semaine '+c.n+', '+rng(c.m)+'" title="Semaine '+c.n+' · '+rng(c.m)+'">'+c.n+'</button>'}).join("")+'</div></div>'}).join("");
+  document.getElementById("today").hidden=(cur===wk(t0).cur);
+  svOut(cur);
 }
-var d=document.getElementById("d");
-var t0=today();
-d.value=new Date(t0).toISOString().slice(0,10);
-d.addEventListener("change",function(){var p=d.value.split("-");if(p.length===3)curT=Date.UTC(+p[0],+p[1]-1,+p[2]);render(curT)});
-var curT=t0;
+document.getElementById("year").addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("button");if(!b)return;curT=CAL[+b.getAttribute("data-i")].m;render(curT);var h=document.getElementById("hero");if(h.getBoundingClientRect().top<0)h.scrollIntoView({behavior:"smooth",block:"start"})});
+document.getElementById("today").addEventListener("click",function(){curT=t0;render(curT)});
 function fillSv(){var cum=8,o=[["0","Rien encore (début d’année)"],["8","Séances de révisions terminées"]];
   LV[LVL].forEach(function(l){cum+=l[1]+1;o.push([cum,l[0]+" terminée"])});
   var sv="0";try{sv=localStorage.getItem("espace-fait-"+LVL)||"0"}catch(e){}
