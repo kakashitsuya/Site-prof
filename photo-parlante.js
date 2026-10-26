@@ -7,7 +7,9 @@
 "use strict";
 var MP="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 var MODEL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-var FPS=60,MAXSIDE=960,GRID=48;
+var HMODEL="https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+var FPS=60,MAXSIDE=1280,GRID=64;
+var LIP_U=[78,191,80,81,82,13,312,311,310,415,308],LIP_L=[78,95,88,178,87,14,317,402,318,324,308];
 var BROWS=[[70,63,105,66,107,46,53,52,65,55],[300,293,334,296,336,276,283,282,295,285]];
 
 function $(id){return document.getElementById(id)}
@@ -15,6 +17,7 @@ var cv=$("stage"),bc=document.createElement("canvas"),bx=bc.getContext("2d"),G=n
 var img=null;      // canvas : la photo redimensionnée
 var P=null;        // zone du visage redressée : {c, w (canvas de travail), cx, cy, ang, R, g (géométrie dans la zone)}
 var H=null;        // modèle de la tête pour les gestes : {c, ux, uy, L, a, b}
+var HN=[];         // mains repérées : [{x, y, r}]
 var buf=null,an=null,actx=null,src=null,t0=0,playing=false,rec=null,open=0,wd=0,sb=0,pick=null,last=-1;
 var blinkAt=2,opts={mouth:1,head:1,blink:true};
 
@@ -30,7 +33,7 @@ function loadImage(file){
     var k=Math.min(1,MAXSIDE/Math.max(im.naturalWidth,im.naturalHeight));
     var w=Math.round(im.naturalWidth*k/2)*2,h=Math.round(im.naturalHeight*k/2)*2;
     img=document.createElement("canvas");img.width=w;img.height=h;img.getContext("2d").drawImage(im,0,0,w,h);
-    URL.revokeObjectURL(u);cv.width=bc.width=w;cv.height=bc.height=h;P=null;H=null;pick=null;
+    URL.revokeObjectURL(u);cv.width=bc.width=w;cv.height=bc.height=h;P=null;H=null;HN=[];pick=null;
     initGL();
     $("ph").hidden=true;$("stage-box").classList.add("has");$("b-pick").hidden=false;
     stop();detect();upd();
@@ -39,15 +42,34 @@ function loadImage(file){
   im.src=u;
 }
 
-var lmk=null;
+var vis=null,lmk=null,hlk=null;
+function vision(){
+  if(!vis)vis=import(MP+"/vision_bundle.mjs").then(function(v){return v.FilesetResolver.forVisionTasks(MP+"/wasm").then(function(fs){return{v:v,fs:fs}})});
+  vis.catch(function(){vis=null});
+  return vis;
+}
 function landmarker(){
-  if(!lmk)lmk=import(MP+"/vision_bundle.mjs").then(function(v){
-    return v.FilesetResolver.forVisionTasks(MP+"/wasm").then(function(fs){
-      return v.FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:MODEL},runningMode:"IMAGE",numFaces:1});
-    });
-  });
+  if(!lmk)lmk=vision().then(function(o){return o.v.FaceLandmarker.createFromOptions(o.fs,{baseOptions:{modelAssetPath:MODEL},runningMode:"IMAGE",numFaces:1})});
   lmk.catch(function(){lmk=null});
   return lmk;
+}
+function handMarker(){
+  if(!hlk)hlk=vision().then(function(o){return o.v.HandLandmarker.createFromOptions(o.fs,{baseOptions:{modelAssetPath:HMODEL},runningMode:"IMAGE",numHands:2})});
+  hlk.catch(function(){hlk=null});
+  return hlk;
+}
+/* Mains visibles : elles suivront le rythme de la voix, comme les gestes d’un présentateur. */
+function detectHands(mine){
+  handMarker().then(function(hl){
+    if(mine!==img)return;
+    var r=hl.detect(img);
+    HN=(r&&r.landmarks||[]).map(function(ls){
+      var x=0,y=0,m=0;ls.forEach(function(q){x+=q.x*img.width;y+=q.y*img.height});x/=ls.length;y/=ls.length;
+      ls.forEach(function(q){m=Math.max(m,Math.hypot(q.x*img.width-x,q.y*img.height-y))});
+      return{x:x,y:y,r:m*1.35};
+    });
+    if(HN.length)st("s-img","Visage trouvé ✓ · "+(HN.length>1?"mains trouvées ✓":"main trouvée ✓"));
+  }).catch(function(){});
 }
 function detect(){
   st("s-img","Recherche du visage…");
@@ -57,10 +79,10 @@ function detect(){
     var r=fl.detect(img),l=r&&r.faceLandmarks&&r.faceLandmarks[0];
     if(!l){st("s-img","Aucun visage trouvé. Touche « Placer la bouche à la main ».",true);return}
     var p=function(i){return{x:l[i].x*img.width,y:l[i].y*img.height}};
-    setGeo({cl:p(61),cr:p(291),up:p(13),lo:p(14),chin:p(152),side:[p(234),p(454)],
+    setGeo({cl:p(61),cr:p(291),up:p(13),lo:p(14),chin:p(152),side:[p(234),p(454)],inU:LIP_U.map(p),inL:LIP_L.map(p),
       eyes:[[p(33),p(133),p(159),p(145)],[p(362),p(263),p(386),p(374)]],
       brows:BROWS.map(function(b){return b.map(p)}),iris:l.length>=478?[p(468),p(473)]:null});
-    st("s-img","Visage trouvé ✓");upd();
+    st("s-img","Visage trouvé ✓");upd();detectHands(mine);
   }).catch(function(){if(mine!==img)return;st("s-img","Détecteur de visage indisponible (connexion ?). Touche « Placer la bouche à la main ».",true)});
 }
 
@@ -88,6 +110,11 @@ function setGeo(f){
   function q(p){var x=p.x-c.x,y=p.y-c.y;return{x:x*co-y*si+R,y:x*si+y*co+R}}
   var cl=q(f.cl),cr=q(f.cr),um=q(m),ch=q(f.chin),y0=um.y,w=cr.x-cl.x;
   var g={mx:um.x,y0:y0,mw:w,yb:Math.min(2*R-2,ch.y+(ch.y-y0)*0.6),ya:y0-w*0.3,eyes:[],brows:[]};
+  // contour intérieur des lèvres (sinon une ligne droite entre les coins)
+  if(f.inU){g.U=f.inU.map(q).sort(byX);g.Lo=f.inL.map(q).sort(byX);g.xL=q(f.inU[0]).x;g.xR=q(f.inU[f.inU.length-1]).x}
+  else{g.U=g.Lo=[{x:cl.x,y:y0},{x:cr.x,y:y0}];g.xL=cl.x+w*0.05;g.xR=cr.x-w*0.05}
+  if(g.xR<g.xL){var tx=g.xL;g.xL=g.xR;g.xR=tx}
+  g.gap=yAt(g.Lo,g.mx)-yAt(g.U,g.mx);g.paint=g.gap<w*0.05;   // bouche fermée sur la photo : on dessinera des dents
   if(f.eyes)f.eyes.forEach(function(e,i){var a=q(e[0]),b=q(e[1]),t=q(e[2]),d=q(e[3]);
     var ex=(a.x+b.x)/2,ir=ex;
     if(f.iris){var cm=mid(e[0],e[1]),ii=dist(f.iris[0],cm)<dist(f.iris[1],cm)?f.iris[0]:f.iris[1],iq=q(ii);if(Math.abs(iq.x-ex)<Math.abs(b.x-a.x)/3)ir=iq.x}
@@ -98,6 +125,10 @@ function setGeo(f){
   });
   var pc=document.createElement("canvas");pc.width=pc.height=2*R;
   var k=pc.getContext("2d");k.translate(R,R);k.rotate(-ang);k.translate(-c.x,-c.y);k.drawImage(img,0,0);
+  // couleur de la lèvre du bas, pour teinter l’intérieur de la bouche
+  try{var lw=Math.max(2,Math.round(w*0.2)),lh=Math.max(2,Math.round(w*0.06)),px;k.setTransform(1,0,0,1,0,0);
+    px=k.getImageData(Math.round(g.mx-lw/2),Math.round(yAt(g.Lo,g.mx)+w*0.03),lw,lh).data;var cc=[0,0,0],n=px.length/4;
+    for(var j=0;j<px.length;j+=4){cc[0]+=px[j];cc[1]+=px[j+1];cc[2]+=px[j+2]}g.lc=cc.map(function(v){return v/n})}catch(e){g.lc=[150,70,70]}
   var wc=document.createElement("canvas");wc.width=wc.height=2*R;
   var tc=document.createElement("canvas");tc.width=tc.height=2*R;
   P={c:pc,t:tc,w:wc,cx:c.x,cy:c.y,ang:ang,R:R,g:g};
@@ -107,6 +138,9 @@ function setGeo(f){
   H={c:em,ux:ux,uy:uy,L:L,a:L*1.2,b:Math.max(fw*1.3,L*0.85)};
 }
 function mid(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2}}
+function byX(a,b){return a.x-b.x}
+function yAt(a,x){if(x<=a[0].x)return a[0].y;for(var i=1;i<a.length;i++)if(x<=a[i].x){var t=(x-a[i-1].x)/((a[i].x-a[i-1].x)||1);return a[i-1].y+(a[i].y-a[i-1].y)*t}return a[a.length-1].y}
+function col(c,f,a){return"rgba("+Math.round(Math.min(255,c[0]*f*1.15))+","+Math.round(c[1]*f*0.8)+","+Math.round(c[2]*f*0.8)+","+(a===undefined?1:a)+")"}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 function fall(t){return t>=1?0:Math.pow(Math.cos(t*Math.PI/2),1.5)}
 
@@ -133,32 +167,40 @@ function warp(o,b,br,wd,sb,gz){
   k.globalCompositeOperation="source-over";k.clearRect(0,0,2*R,2*R);k.drawImage(s,0,0);
   if(o>0.01){
     o*=1-0.45*sb;
-    var S=o*g.mw*0.3*opts.mouth,jw=g.mw*0.62*(1+0.3*wd),x0=Math.floor(g.mx-jw),x1=Math.ceil(g.mx+jw),x,wt,top=[],bot=[];
-    for(x=x0;x<=x1;x++){wt=fall(Math.abs(x+0.5-g.mx)/jw)*S;top.push(g.y0-0.22*wt);bot.push(g.y0+0.78*wt)}
-    // intérieur de la bouche
-    k.save();k.beginPath();
-    for(x=x0;x<=x1;x++)k.lineTo(x+0.5,top[x-x0]);
-    for(x=x1;x>=x0;x--)k.lineTo(x+0.5,bot[x-x0]);
-    k.closePath();
-    var gr=k.createRadialGradient(g.mx,g.y0+S*0.3,0,g.mx,g.y0+S*0.3,g.mw*0.5);
-    gr.addColorStop(0,"#2b0b0d");gr.addColorStop(1,"#4a1c1c");k.fillStyle=gr;k.fill();k.clip();
-    // langue, puis dents du haut
-    k.fillStyle="rgba(150,60,62,.55)";k.beginPath();k.ellipse(g.mx,g.y0+S*0.85,g.mw*0.26,S*0.32,0,0,7);k.fill();
-    k.beginPath();var tw=g.mw*0.34;
-    for(x=x0;x<=x1;x++)if(Math.abs(x+0.5-g.mx)<tw)k.lineTo(x+0.5,top[x-x0]-1);
-    for(x=x1;x>=x0;x--)if(Math.abs(x+0.5-g.mx)<tw)k.lineTo(x+0.5,top[x-x0]+Math.min((bot[x-x0]-top[x-x0])*(0.3+0.25*sb),g.mw*(0.09+0.03*sb)));
-    k.closePath();var tg=k.createLinearGradient(g.mx-tw,0,g.mx+tw,0);
-    tg.addColorStop(0,"rgba(200,188,175,.5)");tg.addColorStop(0.5,"rgba(238,232,222,.95)");tg.addColorStop(1,"rgba(200,188,175,.5)");
-    k.fillStyle=tg;k.fill();
-    if(sb>0.1){k.beginPath();var tl=g.mw*0.26;   // dents du bas sur les sifflantes
-      for(x=x0;x<=x1;x++)if(Math.abs(x+0.5-g.mx)<tl)k.lineTo(x+0.5,bot[x-x0]+1);
-      for(x=x1;x>=x0;x--)if(Math.abs(x+0.5-g.mx)<tl)k.lineTo(x+0.5,bot[x-x0]-(bot[x-x0]-top[x-x0])*0.3*sb);
-      k.closePath();k.globalAlpha=Math.min(1,sb*1.5)*0.85;k.fillStyle=tg;k.fill();k.globalAlpha=1}
-    k.restore();
-    // lèvre et menton descendent, lèvre du haut remonte un peu
-    for(x=x0;x<=x1;x++){var d=bot[x-x0]-g.y0,u=g.y0-top[x-x0];if(d<0.05)continue;
-      k.drawImage(s,x,g.y0,1,g.yb-g.y0,x,g.y0+d,1,g.yb-g.y0-d);
-      k.drawImage(s,x,g.ya,1,g.y0-g.ya,x,g.ya,1,g.y0-g.ya-u)}
+    // L’ouverture suit le contour réel des lèvres et s’annule aux coins intérieurs. On coupe juste au-dessus de la lèvre
+    // du bas : les dents du haut visibles sur la photo restent avec la lèvre du haut, comme une vraie mâchoire.
+    var S=o*g.mw*0.24*opts.mouth,ku=g.paint?0.25:0.1,x,cs=[],yt=1e9,yb2=-1e9,lc=g.lc;
+    for(x=Math.ceil(g.xL);x<=Math.floor(g.xR);x++){var tt=(x+0.5-g.xL)/(g.xR-g.xL);if(tt<=0||tt>=1)continue;
+      var D=S*Math.pow(Math.sin(Math.PI*tt),0.75),yu=yAt(g.U,x+0.5),yl=yAt(g.Lo,x+0.5),ym=Math.max(yu,yl-Math.min((yl-yu)*0.15,1.5));
+      cs.push({x:x,ym:ym,t:ym-ku*D,b:ym+(1-ku)*D});yt=Math.min(yt,ym-ku*D);yb2=Math.max(yb2,ym+(1-ku)*D)}
+    if(cs.length>2){
+      var line=function(key){k.beginPath();cs.forEach(function(c){k.lineTo(c.x+0.5,c[key])})};
+      // intérieur : sombre, teinté de la couleur des lèvres, plus clair vers la langue
+      k.save();line("t");for(var j=cs.length-1;j>=0;j--)k.lineTo(cs[j].x+0.5,cs[j].b);k.closePath();
+      var gr=k.createLinearGradient(0,yt,0,yb2+1);gr.addColorStop(0,col(lc,0.1));gr.addColorStop(0.6,col(lc,0.18));gr.addColorStop(1,col(lc,0.38));
+      k.fillStyle=gr;k.fill();k.clip();
+      k.fillStyle=col(lc,0.6,0.35);k.beginPath();k.ellipse(g.mx,yb2,(g.xR-g.xL)*0.3,Math.max(1,(yb2-yt)*0.45),0,0,7);k.fill();
+      if(g.paint){   // dents dessinées seulement si la photo n’en montre pas
+        var tw=(g.xR-g.xL)*0.36,th=function(c){return Math.min((c.b-c.t)*(0.28+0.25*sb),g.mw*(0.08+0.03*sb))},tg;
+        k.beginPath();cs.forEach(function(c){if(Math.abs(c.x+0.5-g.mx)<tw)k.lineTo(c.x+0.5,c.t-1)});
+        for(j=cs.length-1;j>=0;j--)if(Math.abs(cs[j].x+0.5-g.mx)<tw)k.lineTo(cs[j].x+0.5,cs[j].t+th(cs[j]));
+        k.closePath();tg=k.createLinearGradient(g.mx-tw,0,g.mx+tw,0);
+        tg.addColorStop(0,"rgba(150,140,130,.35)");tg.addColorStop(0.5,"rgba(232,226,216,.92)");tg.addColorStop(1,"rgba(150,140,130,.35)");
+        k.fillStyle=tg;k.fill();
+        if(sb>0.1){k.beginPath();cs.forEach(function(c){if(Math.abs(c.x+0.5-g.mx)<tw*0.8)k.lineTo(c.x+0.5,c.b+1)});
+          for(j=cs.length-1;j>=0;j--)if(Math.abs(cs[j].x+0.5-g.mx)<tw*0.8)k.lineTo(cs[j].x+0.5,cs[j].b-(cs[j].b-cs[j].t)*0.3*sb);
+          k.closePath();k.globalAlpha=Math.min(1,sb*1.5)*0.8;k.fillStyle=tg;k.fill();k.globalAlpha=1}
+      }
+      // ombre portée sous la lèvre du haut
+      k.lineWidth=Math.max(1,g.mw*0.05);k.strokeStyle=col(lc,0.08,0.45);line("t");k.stroke();
+      k.restore();
+      // lèvre et menton descendent, lèvre du haut remonte un peu
+      cs.forEach(function(c){var x=c.x;if(c.b-c.ym<0.05)return;
+        k.drawImage(s,x,c.ym,1,g.yb-c.ym,x,c.b,1,g.yb-c.b);
+        k.drawImage(s,x,g.ya,1,c.ym-g.ya,x,g.ya,1,c.t-g.ya)});
+      // bords des lèvres adoucis
+      k.lineWidth=Math.max(1,g.mw*0.014);k.strokeStyle=col(lc,0.35,0.5);line("t");k.stroke();line("b");k.stroke();
+    }
   }
   // sourcils : le front se tasse vers le haut, la peau entre sourcil et paupière s’étire
   if(br>0.02)g.brows.forEach(function(e){
@@ -206,21 +248,27 @@ function resizeGL(){
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,G.ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,ix,gl.STATIC_DRAW);
   gl.viewport(0,0,W,Hh);gl.uniform2f(G.z,W,Hh);
 }
-/* Déplace les points de la grille : rotation de la tête autour du cou, tournée (le nez bouge plus que les bords), hochement. */
-function deform(roll,yaw,nod){
+/* Déplace les points de la grille : rotation de la tête autour du cou, tournée (le nez bouge plus que les bords), hochement ;
+   le buste respire et accompagne la tête, les mains battent la mesure. */
+function deform(roll,yaw,nod,breath,hv){
   var p0=G.p0,p=G.p,W=cv.width,Hh=cv.height,M=H;
   if(!M){p.set(p0);return}
   var ux=M.ux,uy=M.uy,sx=-uy,sy=ux,pvx=M.c.x-ux*M.L*1.25,pvy=M.c.y-uy*M.L*1.25,co=Math.cos(roll),si=Math.sin(roll),eg=Math.max(W,Hh)*0.04;
   var nr=M.L*0.6,ncx=M.c.x-ux*M.L*0.35,ncy=M.c.y-uy*M.L*0.35;
+  var tcx=pvx-ux*M.L*1.4,tcy=pvy-uy*M.L*1.4,ta=M.L*1.6,tb=M.L*2.6,bdy=breath*M.L*0.012,bdx=yaw*0.12;
   for(var k=0;k<p0.length;k+=2){
     var x=p0[k],y=p0[k+1],dx=x-M.c.x,dy=y-M.c.y,al=dx*ux+dy*uy,ab=dx*sx+dy*sy,e=Math.sqrt(al*al/(M.a*M.a)+ab*ab/(M.b*M.b));
-    var w=e<1?1:e>1.8?0:0.5+0.5*Math.cos((e-1)/0.8*Math.PI);
-    w*=Math.min(1,Math.min(x,W-x,y,Hh-y)/eg);
-    if(w<=0){p[k]=x;p[k+1]=y;continue}
-    var rx=x-pvx,ry=y-pvy,nx2=pvx+rx*co-ry*si,ny2=pvy+rx*si+ry*co;
-    var gn=Math.exp(-((x-ncx)*(x-ncx)+(y-ncy)*(y-ncy))/(nr*nr));
-    nx2+=sx*yaw*(0.45+0.55*gn)-ux*nod*(0.6+0.4*gn);ny2+=sy*yaw*(0.45+0.55*gn)-uy*nod*(0.6+0.4*gn);
-    p[k]=x+(nx2-x)*w;p[k+1]=y+(ny2-y)*w;
+    var w=e<1?1:e>1.8?0:0.5+0.5*Math.cos((e-1)/0.8*Math.PI),ed=Math.min(1,Math.min(x,W-x,y,Hh-y)/eg),ox=0,oy=0;
+    if(w>0){var rx=x-pvx,ry=y-pvy,nx2=pvx+rx*co-ry*si,ny2=pvy+rx*si+ry*co;
+      var gn=Math.exp(-((x-ncx)*(x-ncx)+(y-ncy)*(y-ncy))/(nr*nr));
+      nx2+=sx*yaw*(0.45+0.55*gn)-ux*nod*(0.6+0.4*gn);ny2+=sy*yaw*(0.45+0.55*gn)-uy*nod*(0.6+0.4*gn);
+      ox=(nx2-x)*w;oy=(ny2-y)*w}
+    if(w<1){var r2=1-w,tx=x-tcx,ty=y-tcy,ta2=(tx*ux+ty*uy)/ta,tb2=(tx*sx+ty*sy)/tb,te=Math.sqrt(ta2*ta2+tb2*tb2);
+      var wt=te<0.7?1:te>1.3?0:0.5+0.5*Math.cos((te-0.7)/0.6*Math.PI);
+      ox+=r2*wt*(sx*bdx-ux*bdy);oy+=r2*wt*(sy*bdx-uy*bdy);
+      for(var j=0;j<HN.length;j++){var hn=HN[j],he=Math.hypot(x-hn.x,y-hn.y)/hn.r,wh=he<0.6?1:he>1.7?0:0.5+0.5*Math.cos((he-0.6)/1.1*Math.PI);
+        if(wh>0){ox+=r2*wh*hv[j%2]*hn.r*0.05;oy+=r2*wh*hv[j%2]*hn.r*0.11}}}
+    p[k]=x+ox*ed;p[k+1]=y+oy*ed;
   }
 }
 function drawGL(){
@@ -233,7 +281,7 @@ function drawGL(){
 
 /* ---------- Gestes : ressorts amortis vers des poses choisies selon la voix ---------- */
 function sp(k,z){return{x:0,v:0,t:0,k:k,z:z}}
-var mo={roll:sp(10,0.9),yaw:sp(9,0.9),pitch:sp(45,0.45),brow:sp(70,1),gaze:sp(500,1)},nextPose=0,nextGaze=0,browUntil=0,lastNow=0;
+var mo={roll:sp(10,0.9),yaw:sp(9,0.9),pitch:sp(45,0.45),brow:sp(70,1),gaze:sp(500,1),h0:sp(28,0.45),h1:sp(24,0.45)},nextPose=0,nextGaze=0,browUntil=0,lastNow=0;
 function step(s,dt){s.v+=(s.k*(s.t-s.x)-2*Math.sqrt(s.k)*s.z*s.v)*dt;s.x+=s.v*dt}
 function rnd(a){return(Math.random()*2-1)*a}
 function newPose(talk){mo.roll.t=rnd(talk?0.9:0.5);mo.yaw.t=rnd(talk?1:0.5);mo.pitch.t=rnd(0.25);nextPose=lastNow+(talk?1.4+Math.random()*2.2:3+Math.random()*3)}
@@ -243,10 +291,11 @@ function gestures(now,dt,i0,i1){
     var e=an.ev[i];talk=talk||an.talk[i]===1;
     if(e===2){newPose(true);if(Math.random()<0.35)blinkAt=now;if(Math.random()<0.3){mo.gaze.t=rnd(0.9);nextGaze=now+0.5+Math.random()*0.6}} // début de phrase : parfois regard de côté
     else if(e===1){var s=an.str[i];mo.pitch.v+=(2+3*s)*(Math.random()<0.8?1:-0.6);mo.yaw.v+=rnd(1.2*s);
-      if(s>0.55&&Math.random()<0.5)browUntil=now+0.25+0.2*s}              // syllabe accentuée : hochement, parfois sourcils
+      if(s>0.55&&Math.random()<0.5)browUntil=now+0.25+0.2*s;
+      mo.h0.v+=(2+3*s)*(0.6+Math.random()*0.6);mo.h1.v+=(2+3*s)*(0.4+Math.random()*0.6)}   // les mains battent la mesure              // syllabe accentuée : hochement, parfois sourcils
     else if(e===3&&Math.random()<0.6)blinkAt=now+0.1;                      // fin de phrase
   }
-  if(now>nextPose)newPose(talk);
+  if(now>nextPose){newPose(talk);mo.h0.t=rnd(talk?0.6:0.2);mo.h1.t=rnd(talk?0.6:0.2)}
   mo.brow.t=now<browUntil?1:0;
   if(now>nextGaze){mo.gaze.t=Math.random()<0.6?rnd(0.12):rnd(0.6);nextGaze=now+0.8+Math.random()*2.5}  // petits sauts du regard
   for(var k in mo)step(mo[k],dt);
@@ -275,7 +324,8 @@ function frame(){
     pick.forEach(function(p){bx.beginPath();bx.arc(p.x,p.y,r,0,7);bx.fillStyle="#c42f28";bx.fill();bx.lineWidth=r/2;bx.strokeStyle="#fff";bx.stroke()})}
   if(G){
     var L=H?H.L:cv.height*0.3,breathe=Math.sin(now*1.6)*0.04+Math.sin(now*0.37)*0.05;
-    deform(h*(0.05*mo.roll.x+0.006*Math.sin(now*0.8)),h*L*(0.07*mo.yaw.x+0.008*Math.sin(now*0.53)),h*L*(0.045*mo.pitch.x+0.006*breathe+0.012*open));
+    deform(h*(0.05*mo.roll.x+0.006*Math.sin(now*0.8)),h*L*(0.07*mo.yaw.x+0.008*Math.sin(now*0.53)),h*L*(0.045*mo.pitch.x+0.006*breathe+0.012*open),
+      h*Math.sin(now*1.5),[h*(mo.h0.x+0.15*Math.sin(now*0.9)),h*(mo.h1.x+0.15*Math.sin(now*0.75+1))]);
     drawGL();
   }else c2.drawImage(bc,0,0);
 }
@@ -312,7 +362,7 @@ function analyse(b){
     for(k2=1;k2<F/2;k2++){var f2=k2*hz,pw=re[k2]*re[k2]+im[k2]*im[k2];if(f2>=250&&f2<1000)lo+=pw;else if(f2>=1000&&f2<3000)md+=pw;else if(f2>=4000&&f2<9000)hi+=pw}
     lr[i]=Math.log((md+1e-9)/(lo+1e-9));hr[i]=hi/(lo+md+hi+1e-9)}
   var gate=ref*0.12,cur=0,sl=new Float32Array(N),sv=0;
-  for(i=0;i<N;i++){var v=Math.min(1,Math.max(0,(r[i]-gate)/(ref-gate)));v=Math.pow(v,0.8);cur+=(v-cur)*(v>cur?0.55:0.3);o.open[i]=cur;
+  for(i=0;i<N;i++){var v=Math.min(1,Math.max(0,(r[i]-gate)/(ref-gate)));v=Math.pow(v,0.8);cur+=(v-cur)*(v>cur?0.45:0.25);o.open[i]=cur;
     sv+=(v-sv)*0.12;sl[i]=sv;o.talk[i]=sv>0.08?1:0}
   var quiet=99;
   for(i=0;i<N;i++){
@@ -389,7 +439,7 @@ function makeVideo(){
 }
 
 /* ---------- Placement à la main ---------- */
-function startPick(){stop();pick=[];P=null;H=null;st("s-img","Touche le coin GAUCHE de la bouche sur la photo.");upd()}
+function startPick(){stop();pick=[];P=null;H=null;HN=[];st("s-img","Touche le coin GAUCHE de la bouche sur la photo.");upd()}
 cv.addEventListener("click",function(e){
   if(!pick)return;
   var r=cv.getBoundingClientRect(),p={x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height};
