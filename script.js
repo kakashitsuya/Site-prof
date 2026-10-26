@@ -194,4 +194,5 @@ function showV(v){
   try{localStorage.setItem("espace-vue",v)}catch(e){}
 }
 var v0="sem";try{v0=localStorage.getItem("espace-vue")||"sem"}catch(e){}
+if(location.hash==="#sem"||location.hash==="#notes")v0=location.hash.slice(1);
 showV(v0);
