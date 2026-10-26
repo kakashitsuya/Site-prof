@@ -15,7 +15,7 @@ var cv=$("stage"),bc=document.createElement("canvas"),bx=bc.getContext("2d"),G=n
 var img=null;      // canvas : la photo redimensionnée
 var P=null;        // zone du visage redressée : {c, w (canvas de travail), cx, cy, ang, R, g (géométrie dans la zone)}
 var H=null;        // modèle de la tête pour les gestes : {c, ux, uy, L, a, b}
-var buf=null,an=null,actx=null,src=null,t0=0,playing=false,rec=null,open=0,pick=null,last=-1;
+var buf=null,an=null,actx=null,src=null,t0=0,playing=false,rec=null,open=0,wd=0,sb=0,pick=null,last=-1;
 var blinkAt=2,opts={mouth:1,head:1,blink:true};
 
 function st(id,t,bad){var e=$(id);e.textContent=t;e.className="pp-st"+(bad?" bad":"")}
@@ -59,7 +59,7 @@ function detect(){
     var p=function(i){return{x:l[i].x*img.width,y:l[i].y*img.height}};
     setGeo({cl:p(61),cr:p(291),up:p(13),lo:p(14),chin:p(152),side:[p(234),p(454)],
       eyes:[[p(33),p(133),p(159),p(145)],[p(362),p(263),p(386),p(374)]],
-      brows:BROWS.map(function(b){return b.map(p)})});
+      brows:BROWS.map(function(b){return b.map(p)}),iris:l.length>=478?[p(468),p(473)]:null});
     st("s-img","Visage trouvé ✓");upd();
   }).catch(function(){if(mine!==img)return;st("s-img","Détecteur de visage indisponible (connexion ?). Touche « Placer la bouche à la main ».",true)});
 }
@@ -89,7 +89,9 @@ function setGeo(f){
   var cl=q(f.cl),cr=q(f.cr),um=q(m),ch=q(f.chin),y0=um.y,w=cr.x-cl.x;
   var g={mx:um.x,y0:y0,mw:w,yb:Math.min(2*R-2,ch.y+(ch.y-y0)*0.6),ya:y0-w*0.3,eyes:[],brows:[]};
   if(f.eyes)f.eyes.forEach(function(e,i){var a=q(e[0]),b=q(e[1]),t=q(e[2]),d=q(e[3]);
-    g.eyes.push({x:(a.x+b.x)/2,hw:Math.abs(b.x-a.x)/2,top:t.y,bot:d.y});
+    var ex=(a.x+b.x)/2,ir=ex;
+    if(f.iris){var cm=mid(e[0],e[1]),ii=dist(f.iris[0],cm)<dist(f.iris[1],cm)?f.iris[0]:f.iris[1],iq=q(ii);if(Math.abs(iq.x-ex)<Math.abs(b.x-a.x)/3)ir=iq.x}
+    g.eyes.push({x:ex,hw:Math.abs(b.x-a.x)/2,top:t.y,bot:d.y,ir:ir});
     if(f.brows){var bq=f.brows[i].map(q),xs=bq.map(function(p){return p.x}),mn=Math.min.apply(0,xs),mxx=Math.max.apply(0,xs);
       var by=bq.reduce(function(s,p){return s+p.y},0)/bq.length;
       if(t.y-by>2)g.brows.push({x:(mn+mxx)/2,hw:(mxx-mn)/2*1.15,y:by,lid:t.y})}
@@ -97,7 +99,8 @@ function setGeo(f){
   var pc=document.createElement("canvas");pc.width=pc.height=2*R;
   var k=pc.getContext("2d");k.translate(R,R);k.rotate(-ang);k.translate(-c.x,-c.y);k.drawImage(img,0,0);
   var wc=document.createElement("canvas");wc.width=wc.height=2*R;
-  P={c:pc,w:wc,cx:c.x,cy:c.y,ang:ang,R:R,g:g};
+  var tc=document.createElement("canvas");tc.width=tc.height=2*R;
+  P={c:pc,t:tc,w:wc,cx:c.x,cy:c.y,ang:ang,R:R,g:g};
   // tête : axe menton → yeux, ellipse qui englobe visage et cheveux
   var L=dist(f.chin,em),ux=(em.x-f.chin.x)/L,uy=(em.y-f.chin.y)/L;
   var fw=f.side?dist(f.side[0],f.side[1])/2:mw*1.5;
@@ -107,12 +110,30 @@ function mid(a,b){return{x:(a.x+b.x)/2,y:(a.y+b.y)/2}}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 function fall(t){return t>=1?0:Math.pow(Math.cos(t*Math.PI/2),1.5)}
 
-/* Dessine la zone du visage : bouche ouverte de « o », paupières fermées de « b », sourcils levés de « br » (0 à 1). */
-function warp(o,b,br){
-  var g=P.g,s=P.c,k=P.w.getContext("2d"),R=P.R;
+/* Recopie la ligne y de la source en déplaçant deux repères : [L, i1, i2, Rr] devient [L, j1, j2, Rr] (bords fixes). */
+function row3(k,s,y,L,i1,i2,Rr,j1,j2){
+  k.drawImage(s,L,y,i1-L,1,L,y,j1-L,1);k.drawImage(s,i1,y,i2-i1,1,j1,y,j2-j1,1);k.drawImage(s,i2,y,Rr-i2,1,j2,y,Rr-j2,1);
+}
+/* Dessine la zone du visage. o : ouverture de la bouche, wd : lèvres étirées (+1, « i ») ou arrondies (−1, « ou »),
+   sb : sifflante (« s », « ch » : dents visibles), b : paupières, br : sourcils, gz : regard (−1 à gauche, +1 à droite). */
+function warp(o,b,br,wd,sb,gz){
+  var g=P.g,s=P.c,k=P.w.getContext("2d"),R=P.R,y,v;
+  // 1. largeur de la bouche et position des iris, sur une copie de la zone
+  if(Math.abs(wd)>0.02||Math.abs(gz)>0.02){
+    var t=P.t.getContext("2d");t.clearRect(0,0,2*R,2*R);t.drawImage(s,0,0);
+    if(Math.abs(wd)>0.02){var hi=g.mw*0.45,ho=g.mw*0.95,y1=g.y0-g.mw*0.35,y2=g.y0+g.mw*0.4,sc=wd>0?0.13*wd:0.2*wd;
+      for(y=Math.floor(y1);y<=y2;y++){v=fall(Math.abs(y+0.5-g.y0)/(y<g.y0?g.y0-y1:y2-g.y0));if(v<0.02)continue;
+        var nh=hi*(1+sc*v);row3(t,s,y,g.mx-ho,g.mx-hi,g.mx+hi,g.mx+ho,g.mx-nh,g.mx+nh)}}
+    if(Math.abs(gz)>0.02)g.eyes.forEach(function(e){var hh=(e.bot-e.top)/2*1.3,ym=(e.top+e.bot)/2,ri=e.hw*0.3,L=e.x-e.hw*0.95,Rr=e.x+e.hw*0.95;
+      if(hh<1)return;
+      for(var y=Math.floor(ym-hh);y<=ym+hh;y++){var dx=gz*e.hw*0.22*fall(Math.abs(y+0.5-ym)/hh);if(Math.abs(dx)<0.05)continue;
+        var a=Math.max(L+2,e.ir-ri),c=Math.min(Rr-2,e.ir+ri);dx=Math.max(L+1-a,Math.min(Rr-1-c,dx));row3(t,s,y,L,a,c,Rr,a+dx,c+dx)}});
+    s=P.t;
+  }
   k.globalCompositeOperation="source-over";k.clearRect(0,0,2*R,2*R);k.drawImage(s,0,0);
   if(o>0.01){
-    var S=o*g.mw*0.3*opts.mouth,jw=g.mw*0.62,x0=Math.floor(g.mx-jw),x1=Math.ceil(g.mx+jw),x,wt,top=[],bot=[];
+    o*=1-0.45*sb;
+    var S=o*g.mw*0.3*opts.mouth,jw=g.mw*0.62*(1+0.3*wd),x0=Math.floor(g.mx-jw),x1=Math.ceil(g.mx+jw),x,wt,top=[],bot=[];
     for(x=x0;x<=x1;x++){wt=fall(Math.abs(x+0.5-g.mx)/jw)*S;top.push(g.y0-0.22*wt);bot.push(g.y0+0.78*wt)}
     // intérieur de la bouche
     k.save();k.beginPath();
@@ -125,10 +146,15 @@ function warp(o,b,br){
     k.fillStyle="rgba(150,60,62,.55)";k.beginPath();k.ellipse(g.mx,g.y0+S*0.85,g.mw*0.26,S*0.32,0,0,7);k.fill();
     k.beginPath();var tw=g.mw*0.34;
     for(x=x0;x<=x1;x++)if(Math.abs(x+0.5-g.mx)<tw)k.lineTo(x+0.5,top[x-x0]-1);
-    for(x=x1;x>=x0;x--)if(Math.abs(x+0.5-g.mx)<tw)k.lineTo(x+0.5,top[x-x0]+Math.min((bot[x-x0]-top[x-x0])*0.3,g.mw*0.09));
+    for(x=x1;x>=x0;x--)if(Math.abs(x+0.5-g.mx)<tw)k.lineTo(x+0.5,top[x-x0]+Math.min((bot[x-x0]-top[x-x0])*(0.3+0.25*sb),g.mw*(0.09+0.03*sb)));
     k.closePath();var tg=k.createLinearGradient(g.mx-tw,0,g.mx+tw,0);
     tg.addColorStop(0,"rgba(200,188,175,.5)");tg.addColorStop(0.5,"rgba(238,232,222,.95)");tg.addColorStop(1,"rgba(200,188,175,.5)");
-    k.fillStyle=tg;k.fill();k.restore();
+    k.fillStyle=tg;k.fill();
+    if(sb>0.1){k.beginPath();var tl=g.mw*0.26;   // dents du bas sur les sifflantes
+      for(x=x0;x<=x1;x++)if(Math.abs(x+0.5-g.mx)<tl)k.lineTo(x+0.5,bot[x-x0]+1);
+      for(x=x1;x>=x0;x--)if(Math.abs(x+0.5-g.mx)<tl)k.lineTo(x+0.5,bot[x-x0]-(bot[x-x0]-top[x-x0])*0.3*sb);
+      k.closePath();k.globalAlpha=Math.min(1,sb*1.5)*0.85;k.fillStyle=tg;k.fill();k.globalAlpha=1}
+    k.restore();
     // lèvre et menton descendent, lèvre du haut remonte un peu
     for(x=x0;x<=x1;x++){var d=bot[x-x0]-g.y0,u=g.y0-top[x-x0];if(d<0.05)continue;
       k.drawImage(s,x,g.y0,1,g.yb-g.y0,x,g.y0+d,1,g.yb-g.y0-d);
@@ -207,7 +233,7 @@ function drawGL(){
 
 /* ---------- Gestes : ressorts amortis vers des poses choisies selon la voix ---------- */
 function sp(k,z){return{x:0,v:0,t:0,k:k,z:z}}
-var mo={roll:sp(10,0.9),yaw:sp(9,0.9),pitch:sp(45,0.45),brow:sp(70,1)},nextPose=0,browUntil=0,lastNow=0;
+var mo={roll:sp(10,0.9),yaw:sp(9,0.9),pitch:sp(45,0.45),brow:sp(70,1),gaze:sp(500,1)},nextPose=0,nextGaze=0,browUntil=0,lastNow=0;
 function step(s,dt){s.v+=(s.k*(s.t-s.x)-2*Math.sqrt(s.k)*s.z*s.v)*dt;s.x+=s.v*dt}
 function rnd(a){return(Math.random()*2-1)*a}
 function newPose(talk){mo.roll.t=rnd(talk?0.9:0.5);mo.yaw.t=rnd(talk?1:0.5);mo.pitch.t=rnd(0.25);nextPose=lastNow+(talk?1.4+Math.random()*2.2:3+Math.random()*3)}
@@ -215,13 +241,14 @@ function gestures(now,dt,i0,i1){
   var talk=false;
   if(an)for(var i=Math.max(0,i0);i<=i1&&i<an.ev.length;i++){
     var e=an.ev[i];talk=talk||an.talk[i]===1;
-    if(e===2){newPose(true);if(Math.random()<0.35)blinkAt=now}              // début de phrase
+    if(e===2){newPose(true);if(Math.random()<0.35)blinkAt=now;if(Math.random()<0.3){mo.gaze.t=rnd(0.9);nextGaze=now+0.5+Math.random()*0.6}} // début de phrase : parfois regard de côté
     else if(e===1){var s=an.str[i];mo.pitch.v+=(2+3*s)*(Math.random()<0.8?1:-0.6);mo.yaw.v+=rnd(1.2*s);
       if(s>0.55&&Math.random()<0.5)browUntil=now+0.25+0.2*s}              // syllabe accentuée : hochement, parfois sourcils
     else if(e===3&&Math.random()<0.6)blinkAt=now+0.1;                      // fin de phrase
   }
   if(now>nextPose)newPose(talk);
   mo.brow.t=now<browUntil?1:0;
+  if(now>nextGaze){mo.gaze.t=Math.random()<0.6?rnd(0.12):rnd(0.6);nextGaze=now+0.8+Math.random()*2.5}  // petits sauts du regard
   for(var k in mo)step(mo[k],dt);
 }
 
@@ -230,7 +257,9 @@ function frame(){
   requestAnimationFrame(frame);
   if(!img)return;
   var now=performance.now()/1000,dt=Math.min(0.05,Math.max(0.001,now-(lastNow||now))),target=0,i=-1;lastNow=now;
-  if(playing&&an&&actx){i=Math.floor((actx.currentTime-t0)*FPS);target=i>=0&&i<an.open.length?an.open[i]:0}
+  var twd=0,tsb=0;
+  if(playing&&an&&actx){i=Math.floor((actx.currentTime-t0)*FPS);if(i>=0&&i<an.open.length){target=an.open[i];twd=an.wd[i];tsb=an.sb[i]}}
+  wd+=(twd-wd)*0.5;sb+=(tsb-sb)*0.5;
   gestures(now,dt,last+1,i);if(i>=0)last=i;
   open=playing?target:open*0.8;
   var bl=0;
@@ -240,7 +269,8 @@ function frame(){
   }
   var h=pick?0:opts.head,br=Math.max(0,mo.brow.x)*h;
   bx.setTransform(1,0,0,1,0,0);bx.drawImage(img,0,0);
-  if(P&&(open>0.01||bl>0.02||br>0.02)){warp(open,bl,br);bx.translate(P.cx,P.cy);bx.rotate(P.ang);bx.drawImage(P.w,-P.R,-P.R);bx.setTransform(1,0,0,1,0,0)}
+  var gz=P&&P.g.eyes.length?mo.gaze.x:0,w2=wd*Math.min(1,open*3)-0.1*open;
+  if(P&&(open>0.01||bl>0.02||br>0.02||Math.abs(gz)>0.02)){warp(open,bl,br,w2,sb,gz);bx.translate(P.cx,P.cy);bx.rotate(P.ang);bx.drawImage(P.w,-P.R,-P.R);bx.setTransform(1,0,0,1,0,0)}
   if(pick){var r=Math.max(4,cv.width/120);
     pick.forEach(function(p){bx.beginPath();bx.arc(p.x,p.y,r,0,7);bx.fillStyle="#c42f28";bx.fill();bx.lineWidth=r/2;bx.strokeStyle="#fff";bx.stroke()})}
   if(G){
@@ -264,7 +294,8 @@ function loadAudio(blob,label){
 function fmtD(s){s=Math.round(s);return Math.floor(s/60)+" min "+String(s%60).padStart(2,"0")+" s"}
 
 /* Analyse image par image : ouverture de la bouche (volume un peu en avance sur le son, normalisé puis lissé),
-   moments de parole, syllabes accentuées (pics du volume lissé) et débuts/fins de phrase (après un silence). */
+   forme des lèvres d’après le spectre (aigus 1–3 kHz forts : « i », « é » étirés ; graves dominants : « o », « ou » arrondis ;
+   souffle au-dessus de 4 kHz : sifflantes), moments de parole, syllabes accentuées et débuts/fins de phrase. */
 function analyse(b){
   var n=b.length,ch=b.numberOfChannels,d=new Float32Array(n),c,i;
   for(c=0;c<ch;c++){var x=b.getChannelData(c);for(i=0;i<n;i++)d[i]+=x[i]/ch}
@@ -272,8 +303,14 @@ function analyse(b){
   for(i=0;i<N;i++){var a=Math.max(0,Math.round((i/FPS+0.03)*sr)-win),e=Math.min(n,a+win),s=0;
     for(var j=a;j<e;j++)s+=d[j]*d[j];r[i]=e>a?Math.sqrt(s/(e-a)):0}
   var so=Array.prototype.slice.call(r).sort(function(p,q){return p-q}),ref=so[Math.floor(N*0.95)]||0;
-  var o={open:new Float32Array(N),talk:new Uint8Array(N),ev:new Uint8Array(N),str:new Float32Array(N)};
+  var o={open:new Float32Array(N),talk:new Uint8Array(N),ev:new Uint8Array(N),str:new Float32Array(N),wd:new Float32Array(N),sb:new Float32Array(N)};
   if(ref<1e-4)return o;
+  var F=1024,re=new Float32Array(F),im=new Float32Array(F),hz=sr/F,lr=new Float32Array(N),hr=new Float32Array(N),k2;
+  for(i=0;i<N;i++){var c0=Math.round((i/FPS+0.03)*sr)-F/2,lo=0,md=0,hi=0;
+    for(k2=0;k2<F;k2++){var q=c0+k2;re[k2]=(q>=0&&q<n?d[q]:0)*(0.5-0.5*Math.cos(2*Math.PI*k2/F));im[k2]=0}
+    fft(re,im);
+    for(k2=1;k2<F/2;k2++){var f2=k2*hz,pw=re[k2]*re[k2]+im[k2]*im[k2];if(f2>=250&&f2<1000)lo+=pw;else if(f2>=1000&&f2<3000)md+=pw;else if(f2>=4000&&f2<9000)hi+=pw}
+    lr[i]=Math.log((md+1e-9)/(lo+1e-9));hr[i]=hi/(lo+md+hi+1e-9)}
   var gate=ref*0.12,cur=0,sl=new Float32Array(N),sv=0;
   for(i=0;i<N;i++){var v=Math.min(1,Math.max(0,(r[i]-gate)/(ref-gate)));v=Math.pow(v,0.8);cur+=(v-cur)*(v>cur?0.55:0.3);o.open[i]=cur;
     sv+=(v-sv)*0.12;sl[i]=sv;o.talk[i]=sv>0.08?1:0}
@@ -285,7 +322,23 @@ function analyse(b){
       for(j=Math.max(0,i-9);j<=Math.min(N-1,i+9);j++){if(sl[j]>sl[i]||(sl[j]===sl[i]&&j<i))pk=false;lo=Math.min(lo,sl[j])}
       if(pk&&sl[i]-lo>0.15){o.ev[i]=1;o.str[i]=Math.min(1,sl[i])}}
   }
+  // calibrage sur la voix elle-même : écart à la médiane des moments parlés
+  var sp2=[],sh=[];for(i=0;i<N;i++)if(o.open[i]>0.15){sp2.push(lr[i]);sh.push(hr[i])}
+  if(sp2.length>10){sp2.sort(function(p,q){return p-q});sh.sort(function(p,q){return p-q});
+    var med=sp2[sp2.length>>1],sd=Math.max(0.2,(sp2[Math.floor(sp2.length*0.84)]-sp2[Math.floor(sp2.length*0.16)])/2),
+        mh=sh[sh.length>>1],ph=Math.max(mh+0.02,sh[Math.floor(sh.length*0.9)]),aw=0,as=0;
+    for(i=0;i<N;i++){var tk=r[i]>gate?1:0;
+      aw+=((tk?Math.max(-1,Math.min(1,(lr[i]-med)/(1.5*sd))):0)-aw)*0.4;o.wd[i]=aw;
+      as+=((tk?Math.max(0,Math.min(1,(hr[i]-mh)/(ph-mh))):0)-as)*0.4;o.sb[i]=as}}
   return o;
+}
+
+function fft(re,im){
+  var n=re.length,i,j=0,b,t;
+  for(i=1;i<n;i++){for(b=n>>1;j&b;b>>=1)j^=b;j^=b;if(i<j){t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+  for(var len=2;len<=n;len<<=1){var a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a);
+    for(i=0;i<n;i+=len){var cr=1,ci=0;for(var k=0;k<len/2;k++){var p=i+k,q=p+len/2,xr=re[q]*cr-im[q]*ci,xi=re[q]*ci+im[q]*cr;
+      re[q]=re[p]-xr;im[q]=im[p]-xi;re[p]+=xr;im[p]+=xi;t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t}}}
 }
 
 var mic=null;
