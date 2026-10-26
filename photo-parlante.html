@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photo parlante</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<header class="top">
+<p class="eyebrow">Mathématiques · année 2026-2027</p>
+<h1>Mon espace de classe</h1>
+</header>
+<nav class="seg main-nav" aria-label="Sections"><a href="index.html#sem">Ma semaine</a><a href="index.html#notes">Notes</a><a href="photo-parlante.html" class="on" aria-current="page">Photo parlante</a></nav>
+
+<section class="view pp">
+<div class="card">
+<b>1. La photo</b>
+<p class="m">Un portrait de face, bouche fermée, bien éclairé.</p>
+<div class="row"><label class="btn pri">Choisir une photo<input type="file" id="f-img" accept="image/*" class="vh"></label>
+<button id="b-pick" class="ghost" hidden>Placer la bouche à la main</button></div>
+<p id="s-img" class="pp-st" aria-live="polite"></p>
+</div>
+
+<div class="card stage" id="stage-box">
+<canvas id="stage" width="640" height="640" aria-label="Aperçu de la photo animée"></canvas>
+<p class="ph" id="ph">Choisis une photo ou dépose-la ici</p>
+</div>
+
+<div class="card">
+<b>2. La voix</b>
+<p class="m">Un fichier audio (mp3, m4a, wav…) ou un enregistrement au micro.</p>
+<div class="row"><label class="btn">Choisir un fichier audio<input type="file" id="f-aud" accept="audio/*,video/*" class="vh"></label>
+<button id="b-mic">● Enregistrer au micro</button></div>
+<p id="s-aud" class="pp-st" aria-live="polite"></p>
+</div>
+
+<div class="card">
+<b>3. Animer</b>
+<div class="row"><button id="b-play" class="pri" disabled>▶ Écouter</button><button id="b-rec" disabled>Créer la vidéo</button></div>
+<div class="sliders">
+<label>Ouverture de la bouche<input type="range" id="o-mouth" min="0.3" max="1.8" step="0.05" value="1"></label>
+<label>Gestes (tête, mains, sourcils)<input type="range" id="o-head" min="0" max="2" step="0.1" value="1"></label>
+<label class="chk"><input type="checkbox" id="o-blink" checked> Clignements des yeux</label>
+</div>
+<p id="s-out" class="pp-st" aria-live="polite"></p>
+<div id="out" hidden><video id="vid" controls playsinline></video><a id="dl" class="btn pri" download>Télécharger la vidéo</a></div>
+</div>
+
+<p class="m note">Tout se passe dans ton navigateur : la photo et la voix ne sont envoyées nulle part. Le détecteur de visage (≈ 4 Mo) est téléchargé au premier usage. N’anime que des personnes qui sont d’accord.</p>
+</section>
+</main>
+<script src="photo-parlante.js"></script>
+</body>
+</html>

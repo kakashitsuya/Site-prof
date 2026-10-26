@@ -3,6 +3,7 @@
 Site statique (HTML/CSS/JS, sans dépendance) pour le professeur de maths :
 
 - **Ma semaine** : progression annuelle 6e / 5e / 4e (32 semaines de 4 h, congés, régulations, devoirs de niveau), taux d'exécution et suivi avance/retard.
+- **Photo parlante** (`photo-parlante.html`) : anime un portrait au rythme d’une voix (fichier audio ou micro) — la bouche s’ouvre selon le volume et prend la forme du son (arrondie pour « o/ou », étirée pour « i/é », dents visibles pour « s/ch »), le regard bouge par petits sauts, les yeux clignent, et la tête, le buste et les mains (pas le décor) font des gestes guidés par la voix : hochements sur les syllabes accentuées, changement de pose entre les phrases, sourcils qui se lèvent — et exporte une vidéo (mp4 ou webm). Le visage est repéré par MediaPipe Face Landmarker, chargé depuis un CDN ; sinon on place la bouche à la main. Rien n’est envoyé sur Internet.
 - **Notes et classement** : classes, élèves, évaluations par trimestre (coef, barème), moyennes, rangs, appréciations, export/restauration.
 
 Les données restent dans le navigateur (`localStorage`). Ouvrir `index.html` suffit ; pour le mettre en ligne, activer GitHub Pages sur la racine de la branche.
